@@ -1,6 +1,7 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
+import { ChangeEvent, FormEvent, useState } from 'react'
+import * as XLSX from 'xlsx'
 
 type ResultRow = {
   name: string
@@ -59,43 +60,85 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
     setRows(current => current.filter((_, i) => i !== index))
   }
 
-  async function importChallonge() {
-    if (!challongeUrl.trim()) {
-      setMessage('Enter a Challonge tournament URL first.')
-      return
+  function normalizeHeader(value: unknown) {
+    return String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '')
+  }
+
+  function pick(row: Record<string, unknown>, aliases: string[]) {
+    const normalized = Object.entries(row).map(([key, value]) => [normalizeHeader(key), value] as const)
+    for (const alias of aliases) {
+      const target = normalizeHeader(alias)
+      const found = normalized.find(([key]) => key === target)
+      if (found && found[1] !== undefined && found[1] !== null && String(found[1]).trim() !== '') return found[1]
     }
+    return ''
+  }
+
+  function parseRecord(value: unknown) {
+    const text = String(value ?? '').trim()
+    const match = text.match(/(\d+)\s*[-–]\s*(\d+)(?:\s*[-–]\s*(\d+))?/)
+    if (!match) return null
+    return { wins: match[1], losses: match[2], ties: match[3] || '0' }
+  }
+
+  async function importSpreadsheet(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
 
     setImporting(true)
     setMessage('')
 
-    const res = await fetch('/api/admin/import-challonge', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ challonge_url: challongeUrl }),
-    })
-    const data = await res.json()
-    setImporting(false)
+    try {
+      const buffer = await file.arrayBuffer()
+      const workbook = XLSX.read(buffer, { type: 'array' })
+      const sheet = workbook.Sheets[workbook.SheetNames[0]]
+      if (!sheet) throw new Error('The spreadsheet does not contain a worksheet.')
 
-    if (!res.ok) {
-      if (res.status === 401) setAuthenticated(false)
-      return setMessage(data.error || 'Unable to import Challonge standings.')
+      const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
+      if (!data.length) throw new Error('No standings rows were found in the spreadsheet.')
+
+      const imported = data.map((r, index): ResultRow | null => {
+        const name = pick(r, ['Participant', 'Player', 'Player Name', 'Name', 'Competitor'])
+        if (!String(name).trim()) return null
+
+        const combinedRecord = pick(r, ['Match W-L-T', 'Match W L T', 'W-L-T', 'Record', 'Match Record'])
+        const parsed = parseRecord(combinedRecord)
+
+        const placement = pick(r, ['Rank', 'Place', 'Placement', 'Standing', '#'])
+        const wins = pick(r, ['W', 'Wins', 'Win'])
+        const losses = pick(r, ['L', 'Losses', 'Loss'])
+        const ties = pick(r, ['T', 'Ties', 'Draws', 'Draw'])
+        const tb = pick(r, ['TB', 'Tiebreak', 'Tie Break', 'Tie-Break'])
+        const buchholz = pick(r, ['Buchholz', 'Buchholz Score', 'Buchholz TB'])
+        const diff = pick(r, ['Pts Diff', 'Points Diff', 'Point Diff', 'Pts Differential', 'Differential', 'Diff'])
+
+        return {
+          name: String(name).trim(),
+          placement: String(placement || index + 1),
+          wins: String(wins !== '' ? wins : parsed?.wins ?? 0),
+          losses: String(losses !== '' ? losses : parsed?.losses ?? 0),
+          ties: String(ties !== '' ? ties : parsed?.ties ?? 0),
+          tiebreak: String(tb !== '' ? tb : 0),
+          buchholz: String(buchholz !== '' ? buchholz : 0),
+          point_diff: String(diff !== '' ? diff : 0),
+        }
+      }).filter((r): r is ResultRow => r !== null)
+
+      if (!imported.length) {
+        throw new Error('Could not find a Player/Participant/Name column in the spreadsheet.')
+      }
+
+      setRows(imported)
+      setMessage(`Imported ${imported.length} players from ${file.name}. Review the rows, then save.`)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to read the spreadsheet.')
+    } finally {
+      setImporting(false)
+      e.target.value = ''
     }
-
-    const imported: ResultRow[] = (data.results || []).map((r: any) => ({
-      name: String(r.name || ''),
-      placement: String(r.placement ?? ''),
-      wins: String(r.wins ?? 0),
-      losses: String(r.losses ?? 0),
-      ties: String(r.ties ?? 0),
-      tiebreak: String(r.tiebreak ?? 0),
-      buchholz: String(r.buchholz ?? 0),
-      point_diff: String(r.point_diff ?? 0),
-    }))
-
-    setRows(imported.length ? imported : Array.from({ length: 8 }, blankRow))
-    if (!tournamentName.trim() && data.tournament_name) setTournamentName(data.tournament_name)
-    setChallongeUrl(data.standings_url || challongeUrl)
-    setMessage(`Imported ${imported.length} players from Challonge. Review the rows, then save.`)
   }
 
   async function save(e: FormEvent) {
@@ -184,12 +227,14 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
             <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
           </div>
           <div className="fullField">
-            <label>Challonge URL <span>(paste the tournament or standings URL)</span></label>
+            <label>Challonge URL <span>(optional, saved as tournament reference)</span></label>
+            <input type="url" value={challongeUrl} onChange={e => setChallongeUrl(e.target.value)} placeholder="https://challonge.com/ru2kifce" />
+          </div>
+          <div className="fullField">
+            <label>Import Standings <span>(Excel .xlsx/.xls or CSV)</span></label>
             <div className="challongeImportRow">
-              <input type="url" value={challongeUrl} onChange={e => setChallongeUrl(e.target.value)} placeholder="https://challonge.com/ru2kifce" />
-              <button type="button" className="secondaryButton importButton" onClick={importChallonge} disabled={importing}>
-                {importing ? 'Importing...' : 'Import Standings'}
-              </button>
+              <input type="file" accept=".xlsx,.xls,.csv,text/csv" onChange={importSpreadsheet} disabled={importing} />
+              <span className="importHint">{importing ? 'Reading file...' : 'The imported rows remain editable before saving.'}</span>
             </div>
           </div>
         </div>

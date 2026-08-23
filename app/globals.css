@@ -24,3 +24,7 @@
     width: 100%;
   }
 }
+
+.importHint { color: #9ca3af; font-size: 13px; align-self: center; white-space: nowrap; }
+input[type="file"] { padding: 10px 12px; }
+@media (max-width: 760px) { .importHint { white-space: normal; } }
