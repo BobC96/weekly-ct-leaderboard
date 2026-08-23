@@ -8,6 +8,8 @@ type ResultRow = {
   wins: number
   losses: number
   ties: number
+  tiebreak: number
+  buchholz: number
   point_diff: number
 }
 
@@ -91,6 +93,8 @@ export async function POST(request: Request) {
       wins: Number(row.wins || 0),
       losses: Number(row.losses || 0),
       ties: Number(row.ties || 0),
+      tiebreak: Number(row.tiebreak || 0),
+      buchholz: Number(row.buchholz || 0),
       point_diff: Number(row.point_diff || 0),
     }))
 

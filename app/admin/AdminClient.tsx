@@ -8,11 +8,13 @@ type ResultRow = {
   wins: string
   losses: string
   ties: string
+  tiebreak: string
+  buchholz: string
   point_diff: string
 }
 
 const blankRow = (): ResultRow => ({
-  name: '', placement: '', wins: '', losses: '', ties: '0', point_diff: '0'
+  name: '', placement: '', wins: '', losses: '', ties: '0', tiebreak: '0', buchholz: '0', point_diff: '0'
 })
 
 export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthenticated: boolean }) {
@@ -20,6 +22,7 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [tournamentName, setTournamentName] = useState('')
   const [date, setDate] = useState('')
   const [challongeUrl, setChallongeUrl] = useState('')
@@ -56,6 +59,45 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
     setRows(current => current.filter((_, i) => i !== index))
   }
 
+  async function importChallonge() {
+    if (!challongeUrl.trim()) {
+      setMessage('Enter a Challonge tournament URL first.')
+      return
+    }
+
+    setImporting(true)
+    setMessage('')
+
+    const res = await fetch('/api/admin/import-challonge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challonge_url: challongeUrl }),
+    })
+    const data = await res.json()
+    setImporting(false)
+
+    if (!res.ok) {
+      if (res.status === 401) setAuthenticated(false)
+      return setMessage(data.error || 'Unable to import Challonge standings.')
+    }
+
+    const imported: ResultRow[] = (data.results || []).map((r: any) => ({
+      name: String(r.name || ''),
+      placement: String(r.placement ?? ''),
+      wins: String(r.wins ?? 0),
+      losses: String(r.losses ?? 0),
+      ties: String(r.ties ?? 0),
+      tiebreak: String(r.tiebreak ?? 0),
+      buchholz: String(r.buchholz ?? 0),
+      point_diff: String(r.point_diff ?? 0),
+    }))
+
+    setRows(imported.length ? imported : Array.from({ length: 8 }, blankRow))
+    if (!tournamentName.trim() && data.tournament_name) setTournamentName(data.tournament_name)
+    setChallongeUrl(data.standings_url || challongeUrl)
+    setMessage(`Imported ${imported.length} players from Challonge. Review the rows, then save.`)
+  }
+
   async function save(e: FormEvent) {
     e.preventDefault()
     setSaving(true)
@@ -69,6 +111,8 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
         wins: Number(r.wins || 0),
         losses: Number(r.losses || 0),
         ties: Number(r.ties || 0),
+        tiebreak: Number(r.tiebreak || 0),
+        buchholz: Number(r.buchholz || 0),
         point_diff: Number(r.point_diff || 0),
       }))
 
@@ -140,8 +184,13 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
             <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
           </div>
           <div className="fullField">
-            <label>Challonge URL <span>(optional)</span></label>
-            <input type="url" value={challongeUrl} onChange={e => setChallongeUrl(e.target.value)} placeholder="https://challonge.com/..." />
+            <label>Challonge URL <span>(paste the tournament or standings URL)</span></label>
+            <div className="challongeImportRow">
+              <input type="url" value={challongeUrl} onChange={e => setChallongeUrl(e.target.value)} placeholder="https://challonge.com/ru2kifce" />
+              <button type="button" className="secondaryButton importButton" onClick={importChallonge} disabled={importing}>
+                {importing ? 'Importing...' : 'Import Standings'}
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -154,7 +203,7 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
 
         <div className="resultsWrap">
           <table className="entryTable">
-            <thead><tr><th>Player</th><th>Rank</th><th>W</th><th>L</th><th>T</th><th>Diff</th><th></th></tr></thead>
+            <thead><tr><th>Player</th><th>Rank</th><th>W</th><th>L</th><th>T</th><th>TB</th><th>Buchholz</th><th>Diff</th><th></th></tr></thead>
             <tbody>
               {rows.map((row, i) => <tr key={i}>
                 <td><input value={row.name} onChange={e => updateRow(i, 'name', e.target.value)} placeholder="Player name" /></td>
@@ -162,6 +211,8 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
                 <td><input type="number" min="0" value={row.wins} onChange={e => updateRow(i, 'wins', e.target.value)} /></td>
                 <td><input type="number" min="0" value={row.losses} onChange={e => updateRow(i, 'losses', e.target.value)} /></td>
                 <td><input type="number" min="0" value={row.ties} onChange={e => updateRow(i, 'ties', e.target.value)} /></td>
+                <td><input type="number" step="0.5" value={row.tiebreak} onChange={e => updateRow(i, 'tiebreak', e.target.value)} /></td>
+                <td><input type="number" step="0.5" value={row.buchholz} onChange={e => updateRow(i, 'buchholz', e.target.value)} /></td>
                 <td><input type="number" value={row.point_diff} onChange={e => updateRow(i, 'point_diff', e.target.value)} /></td>
                 <td><button className="removeButton" type="button" onClick={() => removeRow(i)}>×</button></td>
               </tr>)}
@@ -173,7 +224,7 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
           <button type="button" className="secondaryButton" onClick={() => addRows(10)}>+ Add 10 Rows</button>
           <button className="primaryButton" disabled={saving} type="submit">{saving ? 'Saving...' : 'Save Tournament Results'}</button>
         </div>
-        {message && <p className={message.startsWith('Tournament saved') ? 'formMessage successMessage' : 'formMessage errorMessage'}>{message}</p>}
+        {message && <p className={(message.startsWith('Tournament saved') || message.startsWith('Imported')) ? 'formMessage successMessage' : 'formMessage errorMessage'}>{message}</p>}
       </section>
     </form>
   </main>

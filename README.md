@@ -28,3 +28,8 @@ After adding/changing variables, redeploy the project.
 - `scoring_rules`
 - `weekly_standings`
 - view: `monthly_leaderboard`
+
+
+## Challonge standings import
+
+The admin page can import a public Challonge standings page without an API key. Paste a tournament URL (for example `https://challonge.com/ru2kifce`) or its `/standings` URL and click **Import Standings**. The imported data remains editable before saving. Manual entry remains available as a fallback if Challonge changes its public page markup or the tournament is private.

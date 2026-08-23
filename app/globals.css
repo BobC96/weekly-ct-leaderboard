@@ -2,3 +2,25 @@
 
 /* Admin */
 .adminMain{max-width:1200px;margin:auto;padding:42px 20px 80px}.adminHeader{margin-bottom:24px}.adminHeader h1{font-size:38px;margin:7px 0}.adminHeader p{margin:0;opacity:.68}.adminHeaderRow{display:flex;justify-content:space-between;gap:20px;align-items:flex-end}.headerActions{display:flex;gap:10px;flex-wrap:wrap}.adminCard{background:#151922;border:1px solid #262c38;border-radius:18px;padding:22px;margin-bottom:18px}.adminCard h2{margin:0 0 17px;font-size:20px}.loginCard{max-width:430px;margin:0 auto;display:grid;gap:12px}.formGrid{display:grid;grid-template-columns:2fr 1fr;gap:18px}.fullField{grid-column:1/-1}label{display:block;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;opacity:.7;margin-bottom:8px}label span{font-weight:400;text-transform:none;letter-spacing:0}input{width:100%;background:#0f1218;color:#f4f5f7;border:1px solid #303744;border-radius:10px;padding:12px 13px;outline:none}input:focus{border-color:#6c778b}.primaryButton,.secondaryButton{border-radius:10px;padding:11px 16px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.primaryButton{background:#f4f5f7;color:#0b0d12;border:1px solid #f4f5f7}.primaryButton:disabled{opacity:.55;cursor:wait}.secondaryButton{background:#191e27;color:#f4f5f7;border:1px solid #303744}.resultsTitle{display:flex;justify-content:space-between;align-items:end;gap:15px;margin-bottom:14px}.resultsTitle h2{margin-bottom:5px}.resultsTitle p{margin:0;opacity:.55;font-size:13px}.resultsWrap{overflow-x:auto;border:1px solid #262c38;border-radius:12px}.entryTable{min-width:780px}.entryTable th,.entryTable td{padding:8px}.entryTable input{padding:9px 10px}.entryTable td:nth-child(1){min-width:230px}.entryTable td:nth-child(n+2):nth-child(-n+6){width:85px}.removeButton{border:0;background:transparent;color:#9aa2af;font-size:22px;cursor:pointer}.formFooter{display:flex;justify-content:space-between;gap:12px;margin-top:16px}.formMessage{margin:16px 0 0;padding:11px 13px;border-radius:10px;font-size:14px}.successMessage{background:#12251a;border:1px solid #244d34}.errorMessage{background:#2a1518;border:1px solid #572a31}@media(max-width:700px){.adminHeaderRow,.resultsTitle,.formFooter{align-items:stretch;flex-direction:column}.formGrid{grid-template-columns:1fr}.fullField{grid-column:auto}.headerActions{width:100%}.headerActions>*{flex:1}}
+
+
+.challongeImportRow {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.challongeImportRow input {
+  flex: 1;
+  min-width: 0;
+}
+.importButton {
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .challongeImportRow {
+    flex-direction: column;
+  }
+  .importButton {
+    width: 100%;
+  }
+}
