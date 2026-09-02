@@ -51,3 +51,6 @@ Attendance uses `monthly_leaderboard.tournaments_played`, which already counts d
 ## Rename Vercel address
 
 In Vercel, rename the project to `sgbeylion-league` under Project Settings. If `sgbeylion-league.vercel.app` is available, Vercel will use that project domain. If the old deployment URL remains, add/assign the new project domain from the Domains section.
+
+## Bulk save update
+Tournament saving now uses bulk Supabase operations instead of one request per player. A 50-player event uses only a few database requests, and failed standings inserts trigger a best-effort tournament rollback. The admin UI also reports the save stage when an error occurs.

@@ -159,30 +159,39 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
         point_diff: Number(r.point_diff || 0),
       }))
 
-    const res = await fetch('/api/admin/save-results', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: tournamentName,
-        tournament_date: date,
-        challonge_url: challongeUrl,
-        results,
-      }),
-    })
+    try {
+      const res = await fetch('/api/admin/save-results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: tournamentName,
+          tournament_date: date,
+          challonge_url: challongeUrl,
+          results,
+        }),
+      })
 
-    const data = await res.json()
-    setSaving(false)
+      const contentType = res.headers.get('content-type') || ''
+      const data = contentType.includes('application/json')
+        ? await res.json()
+        : { error: await res.text() }
 
-    if (!res.ok) {
-      if (res.status === 401) setAuthenticated(false)
-      return setMessage(data.error || 'Unable to save.')
+      if (!res.ok) {
+        if (res.status === 401) setAuthenticated(false)
+        return setMessage(data.error || `Unable to save (HTTP ${res.status}).`)
+      }
+
+      setMessage(`Tournament saved successfully. ${data.players_saved ?? results.length} bladers added to rankings and attendance.`)
+      setTournamentName('')
+      setDate('')
+      setChallongeUrl('')
+      setRows(Array.from({ length: 8 }, blankRow))
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Unknown network error'
+      setMessage(`Could not reach the save API: ${detail}. Please retry once; your imported rows are still on screen.`)
+    } finally {
+      setSaving(false)
     }
-
-    setMessage('Tournament saved. Monthly rankings and attendance have been updated.')
-    setTournamentName('')
-    setDate('')
-    setChallongeUrl('')
-    setRows(Array.from({ length: 8 }, blankRow))
   }
 
   if (!authenticated) {
