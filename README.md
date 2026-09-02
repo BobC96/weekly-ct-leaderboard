@@ -1,39 +1,53 @@
-# Weekly CT Leaderboard
+# SGBEYLION League
 
-Next.js + Supabase monthly Beyblade X leaderboard.
+Beyblade X monthly rankings + attendance tracker for SGBEYLION CT.
 
-## Public page
+Target Vercel address: `https://sgbeylion-league.vercel.app`
 
-`/` displays the latest month from the Supabase `monthly_leaderboard` view.
+## Public site
 
-## Admin page
+The homepage has two tabs:
 
-`/admin` lets the organiser create a tournament and enter the final standings. Supabase automatically calculates match points, placement points, weekly points and the monthly leaderboard using the SQL trigger/view already created in the project.
+- **Monthly Rankings** — uses the existing `monthly_leaderboard` view and the agreed scoring system.
+- **Attendance** — automatically counts how many CT tournaments each blader attended during the month.
+
+No separate attendance entry is required. Every blader saved from an uploaded CT Excel/CSV standings file counts as attending that tournament.
+
+## Admin
+
+Open `/admin` to:
+
+1. Enter tournament name + date.
+2. Optionally save the Challonge URL as a reference.
+3. Upload the Challonge Excel/CSV standings export.
+4. Review/edit Player, Rank, W, L, T, TB, Buchholz and Diff.
+5. Save the tournament.
+
+Saving results updates both monthly rankings and attendance automatically.
 
 ## Vercel environment variables
 
-Set these in Vercel Project Settings > Environment Variables:
+Keep the same four variables already used by the existing deployment:
 
-- `NEXT_PUBLIC_SUPABASE_URL` — project base URL such as `https://xxxxx.supabase.co`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — `sb_publishable_...`
-- `SUPABASE_SECRET_KEY` — `sb_secret_...` (server-only; NEVER prefix it with NEXT_PUBLIC)
-- `ADMIN_PASSWORD` — password you choose for `/admin`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SECRET_KEY`
+- `ADMIN_PASSWORD`
 
-After adding/changing variables, redeploy the project.
+The Challonge API variables are not required for the Excel workflow.
 
-## Tables expected
+## Supabase requirements
+
+Existing tables/view:
 
 - `players`
 - `tournaments`
 - `scoring_rules`
 - `weekly_standings`
-- view: `monthly_leaderboard`
+- `monthly_leaderboard`
 
+Attendance uses `monthly_leaderboard.tournaments_played`, which already counts distinct tournaments per blader, so no new table or view is needed.
 
-## Challonge standings import
+## Rename Vercel address
 
-The admin page can import a public Challonge standings page without an API key. Paste a tournament URL (for example `https://challonge.com/ru2kifce`) or its `/standings` URL and click **Import Standings**. The imported data remains editable before saving. Manual entry remains available as a fallback if Challonge changes its public page markup or the tournament is private.
-
-
-## Spreadsheet import
-The admin page accepts Excel (.xlsx/.xls) and CSV standings files. It recognizes common Challonge-style headers including Participant/Player, Rank, Match W-L-T, W/L/T, TB, Buchholz, and Pts Diff. Imported rows are editable before saving.
+In Vercel, rename the project to `sgbeylion-league` under Project Settings. If `sgbeylion-league.vercel.app` is available, Vercel will use that project domain. If the old deployment URL remains, add/assign the new project domain from the Domains section.

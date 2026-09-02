@@ -178,7 +178,7 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
       return setMessage(data.error || 'Unable to save.')
     }
 
-    setMessage('Tournament saved. The monthly leaderboard has been updated.')
+    setMessage('Tournament saved. Monthly rankings and attendance have been updated.')
     setTournamentName('')
     setDate('')
     setChallongeUrl('')
@@ -188,7 +188,7 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
   if (!authenticated) {
     return <main className="adminMain">
       <section className="adminHeader">
-        <div className="eyebrow">WEEKLY CT</div>
+        <div className="eyebrow">SGBEYLION CT</div>
         <h1>Admin Login</h1>
         <p>Enter your administrator password.</p>
       </section>
@@ -204,12 +204,12 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
   return <main className="adminMain">
     <section className="adminHeader adminHeaderRow">
       <div>
-        <div className="eyebrow">WEEKLY CT</div>
+        <div className="eyebrow">SGBEYLION CT</div>
         <h1>Tournament Admin</h1>
-        <p>Create a tournament and enter the final Challonge standings.</p>
+        <p>Upload each SGBEYLION CT standings sheet. Every imported blader automatically counts toward monthly attendance.</p>
       </div>
       <div className="headerActions">
-        <a className="secondaryButton" href="/">View Leaderboard</a>
+        <a className="secondaryButton" href="/">View League</a>
         <button className="secondaryButton" type="button" onClick={logout}>Logout</button>
       </div>
     </section>
@@ -220,7 +220,7 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
         <div className="formGrid">
           <div>
             <label>Tournament Name</label>
-            <input value={tournamentName} onChange={e => setTournamentName(e.target.value)} placeholder="Weekly CT - 30 Aug 2026" required />
+            <input value={tournamentName} onChange={e => setTournamentName(e.target.value)} placeholder="SGBEYLION CT - 30 Aug 2026" required />
           </div>
           <div>
             <label>Tournament Date</label>
