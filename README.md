@@ -53,3 +53,8 @@ Top-level framework/library dependencies are exact versions in `package.json` ra
 - `monthly_leaderboard` view
 
 The existing `calculate_weekly_points()` trigger continues to calculate weekly points when standings are inserted.
+
+
+## Security-patched framework
+
+This build pins Next.js to 15.5.24, the patched 15.x Maintenance LTS release for the August 2026 security update.
