@@ -67,13 +67,12 @@ export default function LeaderboardTabs({ rows, totalEvents }: { rows: Leaderboa
           </div>
           <span className="eventCount">{totalEvents} CT{totalEvents === 1 ? '' : 's'} this month</span>
         </div>
-        <div className="tableWrap"><table><thead><tr><th>#</th><th>Blader</th><th>Events</th><th>W-L-T</th><th>Diff</th><th>Points</th></tr></thead><tbody>
+        <div className="tableWrap"><table><thead><tr><th>#</th><th>Blader</th><th>Events</th><th>W-L-T</th><th className="pointsHeaderCell"><span className="pointsHeaderLabel">Points</span><span className="pointsHelp"><button type="button" className="pointsHelpButton" aria-label="How leaderboard points are calculated" aria-describedby="points-help-popup">?</button><span id="points-help-popup" className="pointsHelpPopup" role="tooltip"><strong>How points are calculated</strong><span>Match Win: +3</span><span>Match Tie: +1</span><span>Match Loss: 0</span><span className="pointsHelpDivider" /><strong>Placement bonus</strong><span>1st: +10 · 2nd: +8 · 3rd: +6 · 4th: +5</span><span>5th–8th: +3 · 9th–16th: +2 · 17th+: +1</span><span className="pointsHelpDivider" /><span><strong>Weekly score</strong> = match points + placement bonus.</span><span><strong>Monthly score</strong> = all weekly scores added together for that month.</span></span></span></th></tr></thead><tbody>
           {rows.map((r, i) => <tr key={r.player_id}>
             <td className="rank">{i + 1}</td>
             <td className="bladerName">{r.player_name}</td>
             <td>{r.tournaments_played}</td>
             <td>{r.total_wins}-{r.total_losses}-{r.total_ties}</td>
-            <td>{r.total_point_diff > 0 ? '+' : ''}{r.total_point_diff}</td>
             <td className="points">{r.monthly_points}</td>
           </tr>)}
         </tbody></table></div>

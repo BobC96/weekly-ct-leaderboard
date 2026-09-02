@@ -58,3 +58,8 @@ The existing `calculate_weekly_points()` trigger continues to calculate weekly p
 ## Security-patched framework
 
 This build pins Next.js to 15.5.24, the patched 15.x Maintenance LTS release for the August 2026 security update.
+
+
+## Public rankings UI update
+
+The Monthly Rankings table hides Point Differential from the public table. Point Differential remains stored in Supabase. A `?` beside the Points heading explains match points, placement bonuses, weekly score, and monthly score on hover/focus/tap.
