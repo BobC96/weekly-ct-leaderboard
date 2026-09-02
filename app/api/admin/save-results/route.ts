@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { isAdmin } from '@/lib/admin-auth'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { SupabaseRestError, supabaseRest } from '@/lib/supabase/admin-rest'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -16,30 +16,38 @@ type ResultRow = {
   point_diff: number
 }
 
+type Player = { id: string; name: string }
+type Tournament = { id: string }
+
 type SaveStage =
   | 'validation'
-  | 'players'
-  | 'player_lookup'
+  | 'players_read'
+  | 'players_create'
+  | 'players_refresh'
   | 'tournament'
   | 'standings'
   | 'rollback'
 
-function stageError(stage: SaveStage, error: unknown) {
-  const message = error instanceof Error
+function normalizedPlayerKey(name: string) {
+  return name.trim().toLocaleLowerCase('en-US')
+}
+
+function errorResponse(stage: SaveStage, error: unknown) {
+  const message = error instanceof SupabaseRestError
     ? error.message
-    : typeof error === 'object' && error && 'message' in error
-      ? String((error as { message?: unknown }).message || 'Unknown error')
+    : error instanceof Error
+      ? error.message
       : String(error || 'Unknown error')
 
   console.error(`[save-results:${stage}]`, error)
+
   return NextResponse.json(
-    { error: `Save failed during ${stage.replace('_', ' ')}: ${message}`, stage },
+    {
+      error: `Save failed during ${stage.replaceAll('_', ' ')}: ${message}`,
+      stage,
+    },
     { status: 500 },
   )
-}
-
-function normalizedPlayerKey(name: string) {
-  return name.trim().toLocaleLowerCase('en-US')
 }
 
 export async function POST(request: Request) {
@@ -48,7 +56,6 @@ export async function POST(request: Request) {
   }
 
   let tournamentId: string | null = null
-  const supabase = createAdminClient()
 
   try {
     const body = await request.json()
@@ -69,7 +76,6 @@ export async function POST(request: Request) {
     const cleanResults = (results || [])
       .filter(row => row.name?.trim())
       .map(row => ({
-        ...row,
         name: row.name.trim(),
         placement: Number(row.placement),
         wins: Number(row.wins || 0),
@@ -116,60 +122,84 @@ export async function POST(request: Request) {
       playerKeys.add(key)
     }
 
-    // Bulk-create any missing players in one request. Existing names are ignored.
-    const uniquePlayerNames = cleanResults.map(row => row.name)
-    const { error: playerUpsertError } = await supabase
-      .from('players')
-      .upsert(
-        uniquePlayerNames.map(playerName => ({ name: playerName })),
-        { onConflict: 'name', ignoreDuplicates: true },
-      )
-
-    if (playerUpsertError) {
-      return stageError('players', playerUpsertError)
+    // Read players first. This avoids trying to upsert every participant on each CT.
+    let players: Player[]
+    try {
+      players = await supabaseRest<Player[]>('/players?select=id,name', {}, 'players_read')
+    } catch (error) {
+      return errorResponse('players_read', error)
     }
 
-    // Fetch all player IDs in one request.
-    const { data: players, error: playerLookupError } = await supabase
-      .from('players')
-      .select('id,name')
-      .in('name', uniquePlayerNames)
-
-    if (playerLookupError) {
-      return stageError('player_lookup', playerLookupError)
-    }
-
-    const playerIds = new Map<string, string>()
+    let playerIds = new Map<string, string>()
     for (const player of players || []) {
       playerIds.set(normalizedPlayerKey(player.name), player.id)
     }
 
-    const missingPlayers = cleanResults.filter(row => !playerIds.has(normalizedPlayerKey(row.name)))
-    if (missingPlayers.length > 0) {
+    const missingNames = cleanResults
+      .filter(row => !playerIds.has(normalizedPlayerKey(row.name)))
+      .map(row => row.name)
+
+    if (missingNames.length > 0) {
+      try {
+        await supabaseRest(
+          '/players?on_conflict=name',
+          {
+            method: 'POST',
+            body: missingNames.map(playerName => ({ name: playerName })),
+            prefer: 'resolution=ignore-duplicates,return=minimal',
+          },
+          'players_create',
+        )
+      } catch (error) {
+        return errorResponse('players_create', error)
+      }
+
+      try {
+        players = await supabaseRest<Player[]>('/players?select=id,name', {}, 'players_refresh')
+      } catch (error) {
+        return errorResponse('players_refresh', error)
+      }
+
+      playerIds = new Map<string, string>()
+      for (const player of players || []) {
+        playerIds.set(normalizedPlayerKey(player.name), player.id)
+      }
+    }
+
+    const unresolved = cleanResults.filter(row => !playerIds.has(normalizedPlayerKey(row.name)))
+    if (unresolved.length > 0) {
       return NextResponse.json(
         {
-          error: `Could not resolve player IDs for: ${missingPlayers.map(row => row.name).join(', ')}`,
-          stage: 'player_lookup',
+          error: `Could not resolve player IDs for: ${unresolved.map(row => row.name).join(', ')}`,
+          stage: 'players_refresh',
         },
         { status: 500 },
       )
     }
 
-    // Create the tournament only after all player IDs are ready.
-    const { data: tournament, error: tournamentError } = await supabase
-      .from('tournaments')
-      .insert({
-        name: name.trim(),
-        tournament_date,
-        challonge_url: challonge_url?.trim() || null,
-      })
-      .select('id')
-      .single()
-
-    if (tournamentError || !tournament?.id) {
-      return stageError('tournament', tournamentError || new Error('Tournament ID was not returned.'))
+    let tournamentRows: Tournament[]
+    try {
+      tournamentRows = await supabaseRest<Tournament[]>(
+        '/tournaments?select=id',
+        {
+          method: 'POST',
+          body: {
+            name: name.trim(),
+            tournament_date,
+            challonge_url: challonge_url?.trim() || null,
+          },
+          prefer: 'return=representation',
+        },
+        'tournament',
+      )
+    } catch (error) {
+      return errorResponse('tournament', error)
     }
 
+    const tournament = tournamentRows?.[0]
+    if (!tournament?.id) {
+      return errorResponse('tournament', new Error('Tournament ID was not returned by Supabase.'))
+    }
     tournamentId = tournament.id
 
     const standingRows = cleanResults.map(row => ({
@@ -184,48 +214,49 @@ export async function POST(request: Request) {
       point_diff: row.point_diff,
     }))
 
-    // Save all standings in one insert. The DB trigger calculates weekly points.
-    const { error: standingsError } = await supabase
-      .from('weekly_standings')
-      .insert(standingRows)
-
-    if (standingsError) {
-      // Best-effort rollback: deleting the tournament cascades its standings.
-      const { error: rollbackError } = await supabase
-        .from('tournaments')
-        .delete()
-        .eq('id', tournament.id)
-
-      if (rollbackError) {
-        console.error('[save-results:rollback]', rollbackError)
-        return NextResponse.json(
-          {
-            error: `Standings save failed: ${standingsError.message}. Automatic rollback also failed: ${rollbackError.message}`,
-            stage: 'rollback',
-          },
-          { status: 500 },
+    try {
+      await supabaseRest(
+        '/weekly_standings',
+        {
+          method: 'POST',
+          body: standingRows,
+          prefer: 'return=minimal',
+        },
+        'standings',
+      )
+    } catch (error) {
+      try {
+        await supabaseRest(
+          `/tournaments?id=eq.${encodeURIComponent(tournament.id)}`,
+          { method: 'DELETE', prefer: 'return=minimal', retries: 0 },
+          'rollback',
         )
+        tournamentId = null
+      } catch (rollbackError) {
+        console.error('[save-results:rollback]', rollbackError)
       }
-
-      tournamentId = null
-      return stageError('standings', standingsError)
+      return errorResponse('standings', error)
     }
 
     return NextResponse.json({
       ok: true,
       tournament_id: tournament.id,
       players_saved: cleanResults.length,
+      attendance_updated: true,
     })
   } catch (error) {
-    // If an unexpected error happens after tournament creation, try to clean it up.
     if (tournamentId) {
       try {
-        await supabase.from('tournaments').delete().eq('id', tournamentId)
+        await supabaseRest(
+          `/tournaments?id=eq.${encodeURIComponent(tournamentId)}`,
+          { method: 'DELETE', prefer: 'return=minimal', retries: 0 },
+          'rollback',
+        )
       } catch (rollbackError) {
         console.error('[save-results:rollback-after-exception]', rollbackError)
       }
     }
 
-    return stageError('validation', error)
+    return errorResponse('validation', error)
   }
 }
