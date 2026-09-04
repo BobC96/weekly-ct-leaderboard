@@ -63,3 +63,21 @@ This build pins Next.js to 15.5.24, the patched 15.x Maintenance LTS release for
 ## Public rankings UI update
 
 The Monthly Rankings table hides Point Differential from the public table. Point Differential remains stored in Supabase. A `?` beside the Points heading explains match points, placement bonuses, weekly score, and monthly score on hover/focus/tap.
+
+## Admin security hardening
+
+This build requires `ADMIN_SESSION_SECRET` in Vercel in addition to the existing variables.
+
+Admin protection includes:
+
+- signed HMAC session cookies (8-hour lifetime)
+- HttpOnly + Secure + SameSite=Strict cookie flags
+- same-origin / CSRF checks on login, logout and tournament writes
+- constant-time password comparison
+- basic per-instance login throttling (5 failed attempts per 15 minutes)
+- JSON content-type and request-size checks
+- strict tournament/player/numeric validation
+- explicit rejection of client-supplied `match_points`, `placement_points`, `weekly_points` and `monthly_points`
+- score calculation remains database-trigger controlled
+
+For stronger distributed brute-force protection, also enable a Vercel Firewall/WAF rate-limit rule for `/api/admin/login`.
