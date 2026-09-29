@@ -38,6 +38,9 @@ export default async function Home() {
       <div className="eyebrow">BEYBLADE X COMMUNITY TOURNAMENT</div>
       <h1>SGBEYLION CT</h1>
       <p>{title} Season</p>
+      <div className="heroActions">
+        <a className="secondaryButton" href="/my-stats">👤 My Stats</a>
+      </div>
     </section>
 
     {error ? (
@@ -48,6 +51,6 @@ export default async function Home() {
       <LeaderboardTabs rows={rows as any} totalEvents={totalEvents} />
     )}
 
-    <footer>SGBEYLION League · Monthly Rankings & Attendance</footer>
+    <footer>SGBEYLION League · Monthly Rankings, Attendance & Personal CT Stats</footer>
   </main>
 }
