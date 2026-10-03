@@ -32,20 +32,29 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
   async function login(e: FormEvent) {
     e.preventDefault()
     setMessage('')
-    const res = await fetch('/api/admin/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    })
-    const data = await res.json()
-    if (!res.ok) return setMessage(data.error || 'Login failed.')
-    setAuthenticated(true)
-    setPassword('')
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+      const data = await res.json()
+      if (!res.ok) return setMessage(data.error || 'Login failed.')
+      // Refresh server-rendered admin links after receiving the session cookie.
+      window.location.reload()
+    } catch {
+      setMessage('Unable to reach the login service. Please try again.')
+    }
   }
 
   async function logout() {
-    await fetch('/api/admin/logout', { method: 'POST' })
-    setAuthenticated(false)
+    try {
+      const res = await fetch('/api/admin/logout', { method: 'POST' })
+      if (!res.ok) throw new Error('Logout failed.')
+      window.location.reload()
+    } catch {
+      setMessage('Unable to sign out. Please try again.')
+    }
   }
 
   function updateRow(index: number, key: keyof ResultRow, value: string) {

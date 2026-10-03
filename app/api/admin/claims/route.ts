@@ -1,11 +1,7 @@
+import { AdminRequestError, readAdminJson } from '@/lib/admin-request'
 import { NextResponse } from 'next/server'
 import { isAdmin } from '@/lib/admin-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-
-function sameOrigin(request: Request) {
-  const origin = request.headers.get('origin')
-  return !origin || origin === new URL(request.url).origin
-}
 
 export async function GET() {
   if (!(await isAdmin())) {
@@ -47,14 +43,18 @@ export async function POST(request: Request) {
   if (!(await isAdmin())) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   }
-  if (!sameOrigin(request)) {
-    return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 })
+  let body: Record<string, unknown>
+  try {
+    body = await readAdminJson(request, 4096)
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof AdminRequestError ? error.message : 'Invalid request.' }, {
+      status: error instanceof AdminRequestError ? error.status : 400,
+    })
   }
-
-  const body = await request.json().catch(() => null) as { user_id?: string; action?: string } | null
-  const userId = body?.user_id?.trim()
-  const action = body?.action
-  if (!userId || !['approve', 'reject'].includes(action || '')) {
+  const userId = typeof body.user_id === 'string' ? body.user_id.trim() : ''
+  const action = body.action
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)
+    || (action !== 'approve' && action !== 'reject')) {
     return NextResponse.json({ error: 'Invalid review request.' }, { status: 400 })
   }
 
