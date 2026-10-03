@@ -20,6 +20,7 @@ Target Vercel address: `https://sgbeylion-league.vercel.app`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_SECRET_KEY`
 - `ADMIN_PASSWORD`
+- `ADMIN_SESSION_SECRET` (at least 32 characters; generate a random 64-character value)
 
 `NEXT_PUBLIC_SUPABASE_URL` may be entered as the project URL. The server save code also safely strips an accidental `/rest/v1` suffix.
 
@@ -66,18 +67,41 @@ The Monthly Rankings table hides Point Differential from the public table. Point
 
 ## Admin security hardening
 
-This build requires `ADMIN_SESSION_SECRET` in Vercel in addition to the existing variables.
+Admin cookies are signed with HMAC-SHA256 and verified on the server, with an
+8-hour expiry. A password or session-secret change invalidates existing sessions.
+Legacy password-hash cookies are rejected; admins must sign in again after deployment.
 
-Admin protection includes:
+- Configure ADMIN_PASSWORD and ADMIN_SESSION_SECRET for both Production and Preview.
+- Store both as Secret variables in Vercel. Use different random session secrets
+  for Production and Preview. Never commit their values.
+- Cookies are HttpOnly, SameSite=Strict, and Secure in production builds.
+- All admin POST endpoints require an Origin matching the request URL.
+- JSON endpoints enforce content type and streaming byte limits (4 KiB for login,
+  claims, and URL import; 1 MiB for tournament saves).
+- Login uses a constant-time comparison of password digests.
+- Basic login throttling allows five attempts per 15 minutes per client per
+  server instance, including successful attempts. It uses Vercel's overwritten
+  x-vercel-forwarded-for header on Vercel; local development shares one bucket.
+  This is not distributed protection and resets on instance restart. Configure
+  a Vercel Firewall/WAF rate limit for /api/admin/login as an additional layer.
+- Saves validate dates, names, duplicates, numeric values and optional HTTPS
+  Challonge URLs. Limits: 1000 players, 200 characters per name, numeric magnitude
+  up to 1,000,000; tiebreak/Buchholz accept half steps and signed differentials
+  remain supported. Explicit score fields are rejected; database triggers own scores.
+- URL imports refuse redirects and time out after 15 seconds. If Challonge redirects
+  a public URL, use its final HTTPS URL or upload the spreadsheet instead.
 
-- signed HMAC session cookies (8-hour lifetime)
-- HttpOnly + Secure + SameSite=Strict cookie flags
-- same-origin / CSRF checks on login, logout and tournament writes
-- constant-time password comparison
-- basic per-instance login throttling (5 failed attempts per 15 minutes)
-- JSON content-type and request-size checks
-- strict tournament/player/numeric validation
-- explicit rejection of client-supplied `match_points`, `placement_points`, `weekly_points` and `monthly_points`
-- score calculation remains database-trigger controlled
+### Verification and rollout
 
-For stronger distributed brute-force protection, also enable a Vercel Firewall/WAF rate-limit rule for `/api/admin/login`.
+Run `npm test`, `npm run typecheck`, and `npm run build`.
+Tests use simulated cookies and database responses, never the live database.
+The build requires Supabase URL/publishable-key variables; placeholder values
+can be used for compilation because application pages are dynamic.
+
+Review the pull request and its Vercel Preview before merging into main.
+Preview may share the production database: use login/logout checks only unless
+a separate test database has been configured. Confirm the claims-review link
+appears after login, and that a fresh login is required after logout.
+
+This change does not add tournament deduplication, modify database grants, or
+change player authentication. Keep the Supabase server secret out of browser code.

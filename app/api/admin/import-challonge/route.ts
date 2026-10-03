@@ -1,3 +1,4 @@
+import { AdminRequestError, readAdminJson } from '@/lib/admin-request'
 import { NextResponse } from 'next/server'
 import { isAdmin } from '@/lib/admin-auth'
 
@@ -34,14 +35,17 @@ function normalizeStandingsUrl(input: string) {
 
   const url = new URL(raw)
   const host = url.hostname.toLowerCase()
+  if (url.protocol !== 'https:' || url.username || url.password || url.port) {
+    throw new AdminRequestError('Enter an HTTPS challonge.com URL.')
+  }
   if (host !== 'challonge.com' && !host.endsWith('.challonge.com')) {
-    throw new Error('Please enter a challonge.com tournament URL.')
+    throw new AdminRequestError('Please enter a challonge.com tournament URL.')
   }
 
   // Remove common page suffixes and point to public standings.
   let path = url.pathname.replace(/\/+$/, '')
   path = path.replace(/\/(standings|participants|matches|log|announcements|module)$/i, '')
-  if (!path || path === '/') throw new Error('The Challonge tournament URL is incomplete.')
+  if (!path || path === '/') throw new AdminRequestError('The Challonge tournament URL is incomplete.')
 
   return `${url.protocol}//${url.host}${path}/standings`
 }
@@ -101,8 +105,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json()
-    const inputUrl = String(body?.challonge_url || '').trim()
+    const body = await readAdminJson(request, 4096)
+    const inputUrl = typeof body.challonge_url === 'string' ? body.challonge_url.trim() : ''
+    if (inputUrl.length > 2048) throw new AdminRequestError('Challonge URL is too long.')
     if (!inputUrl) {
       return NextResponse.json({ error: 'Enter a Challonge tournament URL first.' }, { status: 400 })
     }
@@ -110,7 +115,8 @@ export async function POST(request: Request) {
     const standingsUrl = normalizeStandingsUrl(inputUrl)
     const response = await fetch(standingsUrl, {
       cache: 'no-store',
-      redirect: 'follow',
+      redirect: 'error',
+      signal: AbortSignal.timeout(15_000),
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; WeeklyCTLeaderboard/1.0)',
         'Accept': 'text/html,application/xhtml+xml',
@@ -138,8 +144,9 @@ export async function POST(request: Request) {
       tournament_name: extractTournamentName(html),
       results,
     })
-  } catch (error: any) {
-    console.error(error)
-    return NextResponse.json({ error: error?.message || 'Unable to import Challonge standings.' }, { status: 500 })
+  } catch (error) {
+    if (error instanceof AdminRequestError) return NextResponse.json({ error: error.message }, { status: error.status })
+    console.error('[import-challonge]', error)
+    return NextResponse.json({ error: 'Unable to import Challonge standings. Try uploading a spreadsheet instead.' }, { status: 502 })
   }
 }
