@@ -72,7 +72,7 @@ export default function LoginClient({ nextPath }: { nextPath: string }) {
         value={password}
         onChange={e => setPassword(e.target.value)}
         autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-        minLength={8}
+        minLength={mode === 'signup' ? 8 : undefined}
         required
       />
 
