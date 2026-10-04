@@ -2,6 +2,7 @@
 
 import { ChangeEvent, FormEvent, useState } from 'react'
 import * as XLSX from 'xlsx'
+import { adminLoginError } from '@/lib/admin-login-response'
 
 type ResultRow = {
   name: string
@@ -38,8 +39,7 @@ export default function AdminClient({ initiallyAuthenticated }: { initiallyAuthe
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       })
-      const data = await res.json()
-      if (!res.ok) return setMessage(data.error || 'Login failed.')
+      if (!res.ok) return setMessage(await adminLoginError(res))
       // Refresh server-rendered admin links after receiving the session cookie.
       window.location.reload()
     } catch {

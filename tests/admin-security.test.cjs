@@ -46,6 +46,19 @@ function harness(rest = async () => { throw new Error('Unexpected database acces
 
 const origin = 'https://league.example'
 
+test('login errors render strings for firewall JSON, HTML and application responses', async () => {
+  const { adminLoginError } = harness().load('lib/admin-login-response')
+  for (const body of [JSON.stringify({ error: { code: 'RATE_LIMITED', message: 'Blocked' } }), '<html>Too many requests</html>', '']) {
+    const message = await adminLoginError(new Response(body, { status: 429 }))
+    assert.equal(typeof message, 'string')
+    assert.match(message, /Too many login attempts/)
+  }
+  assert.equal(await adminLoginError(new Response(JSON.stringify({ error: 'Incorrect password.' }), { status: 401 })), 'Incorrect password.')
+  for (const body of ['<html>Unavailable</html>', 'null', '{}', JSON.stringify({ error: { code: 'BLOCKED' } }), JSON.stringify({ error: 123 })]) {
+    assert.equal(await adminLoginError(new Response(body, { status: 503 })), 'Login is temporarily unavailable. Please try again later.')
+  }
+})
+
 test('REST errors retain the database error code without retrying a unique conflict', async () => {
   const { supabaseRest, SupabaseRestError } = harness().load('lib/supabase/admin-rest')
   const originalFetch = global.fetch
