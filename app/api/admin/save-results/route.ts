@@ -1,20 +1,11 @@
+import { AdminRequestError, readAdminJson } from '@/lib/admin-request'
+import { validateResults } from '@/lib/admin-results'
 import { NextResponse } from 'next/server'
 import { isAdmin } from '@/lib/admin-auth'
 import { SupabaseRestError, supabaseRest } from '@/lib/supabase/admin-rest'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
-
-type ResultRow = {
-  name: string
-  placement: number
-  wins: number
-  losses: number
-  ties: number
-  tiebreak: number
-  buchholz: number
-  point_diff: number
-}
 
 type Player = { id: string; name: string }
 type Tournament = { id: string }
@@ -58,69 +49,7 @@ export async function POST(request: Request) {
   let tournamentId: string | null = null
 
   try {
-    const body = await request.json()
-    const { name, tournament_date, challonge_url, results } = body as {
-      name: string
-      tournament_date: string
-      challonge_url?: string
-      results: ResultRow[]
-    }
-
-    if (!name?.trim() || !tournament_date) {
-      return NextResponse.json(
-        { error: 'Tournament name and date are required.', stage: 'validation' },
-        { status: 400 },
-      )
-    }
-
-    const cleanResults = (results || [])
-      .filter(row => row.name?.trim())
-      .map(row => ({
-        name: row.name.trim(),
-        placement: Number(row.placement),
-        wins: Number(row.wins || 0),
-        losses: Number(row.losses || 0),
-        ties: Number(row.ties || 0),
-        tiebreak: Number(row.tiebreak || 0),
-        buchholz: Number(row.buchholz || 0),
-        point_diff: Number(row.point_diff || 0),
-      }))
-
-    if (cleanResults.length === 0) {
-      return NextResponse.json(
-        { error: 'Add at least one player result.', stage: 'validation' },
-        { status: 400 },
-      )
-    }
-
-    const placements = new Set<number>()
-    const playerKeys = new Set<string>()
-
-    for (const row of cleanResults) {
-      if (!Number.isInteger(row.placement) || row.placement < 1) {
-        return NextResponse.json(
-          { error: `Invalid placement for ${row.name}.`, stage: 'validation' },
-          { status: 400 },
-        )
-      }
-
-      if (placements.has(row.placement)) {
-        return NextResponse.json(
-          { error: `Placement ${row.placement} is entered more than once.`, stage: 'validation' },
-          { status: 400 },
-        )
-      }
-      placements.add(row.placement)
-
-      const key = normalizedPlayerKey(row.name)
-      if (playerKeys.has(key)) {
-        return NextResponse.json(
-          { error: `Player ${row.name} appears more than once in this tournament.`, stage: 'validation' },
-          { status: 400 },
-        )
-      }
-      playerKeys.add(key)
-    }
+    const { name, tournament_date, challonge_url, results: cleanResults } = validateResults(await readAdminJson(request))
 
     // Read players first. This avoids trying to upsert every participant on each CT.
     let players: Player[]
@@ -193,6 +122,14 @@ export async function POST(request: Request) {
         'tournament',
       )
     } catch (error) {
+      if (error instanceof SupabaseRestError && error.code === '23505'
+        && error.detail?.includes('"tournaments_unique_name_date"')) {
+        return NextResponse.json({
+          error: 'This tournament already exists with the same name and date. Check its saved results before trying again.',
+          code: 'DUPLICATE_TOURNAMENT',
+          stage: 'tournament',
+        }, { status: 409 })
+      }
       return errorResponse('tournament', error)
     }
 
@@ -245,6 +182,9 @@ export async function POST(request: Request) {
       attendance_updated: true,
     })
   } catch (error) {
+    if (error instanceof AdminRequestError) {
+      return NextResponse.json({ error: error.message, stage: 'validation' }, { status: error.status })
+    }
     if (tournamentId) {
       try {
         await supabaseRest(

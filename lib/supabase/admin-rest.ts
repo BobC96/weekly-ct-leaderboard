@@ -10,13 +10,15 @@ export class SupabaseRestError extends Error {
   status?: number
   stage?: string
   detail?: string
+  code?: string
 
-  constructor(message: string, options?: { status?: number; stage?: string; detail?: string }) {
+  constructor(message: string, options?: { status?: number; stage?: string; detail?: string; code?: string }) {
     super(message)
     this.name = 'SupabaseRestError'
     this.status = options?.status
     this.stage = options?.stage
     this.detail = options?.detail
+    this.code = options?.code
   }
 }
 
@@ -120,7 +122,11 @@ export async function supabaseRest<T = unknown>(
 
         throw new SupabaseRestError(
           `Supabase HTTP ${response.status}: ${detail}`,
-          { status: response.status, stage, detail },
+          {
+            status: response.status, stage, detail,
+            code: typeof payload === 'object' && payload && 'code' in payload && typeof payload.code === 'string'
+              ? payload.code : undefined,
+          },
         )
       }
 
