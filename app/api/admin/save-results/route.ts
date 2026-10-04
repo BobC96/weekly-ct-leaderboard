@@ -122,6 +122,14 @@ export async function POST(request: Request) {
         'tournament',
       )
     } catch (error) {
+      if (error instanceof SupabaseRestError && error.code === '23505'
+        && error.detail?.includes('"tournaments_unique_name_date"')) {
+        return NextResponse.json({
+          error: 'This tournament already exists with the same name and date. Check its saved results before trying again.',
+          code: 'DUPLICATE_TOURNAMENT',
+          stage: 'tournament',
+        }, { status: 409 })
+      }
       return errorResponse('tournament', error)
     }
 

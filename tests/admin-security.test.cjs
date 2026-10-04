@@ -16,9 +16,6 @@ function harness(rest = async () => { throw new Error('Unexpected database acces
       get: key => jar.has(key) ? { value: jar.get(key) } : undefined,
       set: (key, value, options) => { jar.set(key, value); writes.push({ key, value, options }) },
     }) },
-    '@/lib/supabase/admin-rest': {
-      supabaseRest: rest, SupabaseRestError: class extends Error {},
-    },
     '@/lib/supabase/admin': {
       createAdminClient: () => { throw new Error('Unexpected database access') },
     },
@@ -33,6 +30,9 @@ function harness(rest = async () => { throw new Error('Unexpected database acces
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
     }).outputText
     const localRequire = id => {
+      if (id === '@/lib/supabase/admin-rest') {
+        return { ...load('lib/supabase/admin-rest'), supabaseRest: rest }
+      }
       if (Object.hasOwn(mocks, id)) return mocks[id]
       if (id.startsWith('@/')) return load(id.slice(2))
       if (id.startsWith('.')) return load(path.resolve(path.dirname(file), id))
@@ -45,6 +45,85 @@ function harness(rest = async () => { throw new Error('Unexpected database acces
 }
 
 const origin = 'https://league.example'
+
+test('REST errors retain the database error code without retrying a unique conflict', async () => {
+  const { supabaseRest, SupabaseRestError } = harness().load('lib/supabase/admin-rest')
+  const originalFetch = global.fetch
+  const oldUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const oldKey = process.env.SUPABASE_SECRET_KEY
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
+  process.env.SUPABASE_SECRET_KEY = 'test-only-key'
+  let calls = 0
+  global.fetch = async () => {
+    calls++
+    return new Response(JSON.stringify({
+      code: '23505',
+      message: 'duplicate key value violates unique constraint "tournaments_unique_name_date"',
+    }), { status: 409, headers: { 'content-type': 'application/json' } })
+  }
+  try {
+    await assert.rejects(supabaseRest('/tournaments', { method: 'POST', body: {} }, 'tournament'),
+      error => error instanceof SupabaseRestError && error.code === '23505'
+        && error.status === 409 && error.stage === 'tournament')
+    assert.equal(calls, 1)
+  } finally {
+    global.fetch = originalFetch
+    if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = oldUrl
+    if (oldKey === undefined) delete process.env.SUPABASE_SECRET_KEY
+    else process.env.SUPABASE_SECRET_KEY = oldKey
+  }
+})
+
+test('duplicate tournament returns 409 and neither saves standings nor deletes the existing event', async () => {
+  const stages = []
+  const h = harness(async (url, options, stage) => {
+    stages.push(stage)
+    if (stage === 'players_read') return [{ id: 'player-id', name: 'Player A' }]
+    if (stage === 'tournament') {
+      const { SupabaseRestError } = h.load('lib/supabase/admin-rest')
+      throw new SupabaseRestError('Unique conflict', {
+        status: 409, code: '23505', stage,
+        detail: 'duplicate key value violates unique constraint "tournaments_unique_name_date"',
+      })
+    }
+    throw new Error('Unexpected write')
+  })
+  await h.load('lib/admin-auth').setAdminCookie()
+  const response = await h.load('app/api/admin/save-results/route').POST(request(validResults()))
+  assert.equal(response.status, 409)
+  const body = await response.json()
+  assert.equal(body.code, 'DUPLICATE_TOURNAMENT')
+  assert.match(body.error, /already exists/)
+  assert.deepEqual(stages, ['players_read', 'tournament'])
+})
+
+test('other database failures are not misreported as duplicate tournaments', async () => {
+  for (const [code, constraint] of [
+    ['23505', 'tournaments_pkey'],
+    ['42501', 'tournaments_unique_name_date'],
+  ]) {
+    const stages = []
+    const h = harness(async (url, options, stage) => {
+      stages.push(stage)
+      if (stage === 'players_read') return [{ id: 'player-id', name: 'Player A' }]
+      const { SupabaseRestError } = h.load('lib/supabase/admin-rest')
+      throw new SupabaseRestError('Other database failure', {
+        status: 409, code, detail: 'constraint "' + constraint + '"',
+      })
+    })
+    await h.load('lib/admin-auth').setAdminCookie()
+    const oldError = console.error
+    let response
+    try {
+      console.error = () => {}
+      response = await h.load('app/api/admin/save-results/route').POST(request(validResults()))
+    } finally { console.error = oldError }
+    assert.equal(response.status, 500)
+    assert.equal((await response.json()).code, undefined)
+    assert.deepEqual(stages, ['players_read', 'tournament'])
+  }
+})
 const secret = 'a'.repeat(64)
 const password = 'test-only-admin-password'
 process.env.ADMIN_SESSION_SECRET = secret

@@ -103,5 +103,21 @@ Preview may share the production database: use login/logout checks only unless
 a separate test database has been configured. Confirm the claims-review link
 appears after login, and that a fresh login is required after logout.
 
-This change does not add tournament deduplication, modify database grants, or
-change player authentication. Keep the Supabase server secret out of browser code.
+Keep the Supabase server secret out of browser code.
+
+## Duplicate tournament uploads
+
+The database index `tournaments_unique_name_date` enforces one event per date and
+name, ignoring letter case and surrounding spaces. The owner applied it in
+Supabase on 2026-10-04; `docs/tournament-uniqueness.sql` records its definition for
+new databases. Do not rerun it on the existing production database.
+
+The save API returns HTTP 409 with `DUPLICATE_TOURNAMENT` for a conflict on this
+specific index. The admin form displays the message and preserves the entered
+rows. Unrelated database errors retain their existing error handling.
+
+This is duplicate blocking, not an atomic or idempotent save. If a network
+response is lost, check the existing tournament before retrying: it may be fully
+saved or may lack standings. A rejected duplicate does not overwrite or delete
+the existing tournament. Player creation happens before the tournament insert,
+so an unsuccessful upload can still leave newly created player records.
